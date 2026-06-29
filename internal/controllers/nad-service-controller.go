@@ -20,16 +20,16 @@ type NADServiceReconciler struct {
 }
 
 func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	log := log.FromContext(ctx, "service", req.NamespacedName)
 
-	log.Info("reconciling service", "name", req.NamespacedName)
+	log.Info("reconciling service")
 	svc := &corev1.Service{}
 	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("skipping service", "reason", "service not found", "name", req.NamespacedName)
+			log.Info("skipping service", "reason", "service not found")
 			return reconcile.Result{}, nil
 		}
-		log.Error(err, "reason", "failed to get Service", "name", req.NamespacedName)
+		log.Error(err, "additionalInfo", "fail to get service")
 		return reconcile.Result{}, fmt.Errorf("failed to get Service: %w", err)
 	}
 
@@ -42,7 +42,7 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	selector, err := labels.Set(svc.Spec.Selector).AsValidatedSelector()
 	if err != nil {
-		log.Error(err, "reason", "failed to create label selector from Service spec")
+		log.Error(err, "additionalInfo", "failed to create label selector from Service spec")
 		return reconcile.Result{}, err
 	}
 
