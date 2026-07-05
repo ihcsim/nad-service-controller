@@ -22,6 +22,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		SchemeGroupVersion,
 		&corev1.Pod{},
 		&corev1.PodList{},
+		&corev1.Node{},
+		&corev1.NodeList{},
 	)
 
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)

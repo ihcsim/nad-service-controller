@@ -49,9 +49,10 @@ func main() {
 	}
 
 	r := &inctrl.NADServiceReconciler{
-		Client: mgr.GetClient(),
-		Log:    log,
-		Debug:  log.V(3),
+		Client:         mgr.GetClient(),
+		ControllerName: ControllerName,
+		Log:            log,
+		Debug:          log.V(3),
 	}
 	if err := ctrl.NewControllerManagedBy(mgr).
 		Named(ControllerName).

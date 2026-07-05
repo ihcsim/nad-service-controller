@@ -6,15 +6,20 @@ import (
 	"sync"
 
 	"github.com/go-logr/logr"
+
 	corev1 "k8s.io/api/core/v1"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	endpointsliceac "github.com/ihcsim/nad-service-controller/internal/controllers/applyconfiguration/endpointslice"
 )
 
 const (
@@ -24,8 +29,9 @@ const (
 
 type NADServiceReconciler struct {
 	client.Client
-	Log   logr.Logger
-	Debug logr.Logger
+	ControllerName string
+	Log            logr.Logger
+	Debug          logr.Logger
 }
 
 func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -36,33 +42,46 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
 		if apierrors.IsNotFound(err) {
 			log.Info("skipping service", "reason", "service not found")
-			return reconcile.Result{}, nil
+			return ctrl.Result{}, nil
 		}
-		log.Error(err, "additionalInfo", "fail to get service")
-		return reconcile.Result{}, fmt.Errorf("failed to get Service: %w", err)
+		log.Error(err, "fail to get service")
+		return ctrl.Result{}, fmt.Errorf("failed to get Service: %w", err)
 	}
 
 	network, exists := svc.GetAnnotations()[serviceAnnotation]
 	if !exists {
 		log.Info("skipping service", "reason", "don't have required annotation", "annotation", serviceAnnotation)
-		return reconcile.Result{}, nil
+		return ctrl.Result{}, nil
 	}
 	log.Info("found network", "network", network)
 
 	selector, err := labels.Set(svc.Spec.Selector).AsValidatedSelector()
 	if err != nil {
-		log.Error(err, "additionalInfo", "failed to create label selector from Service spec")
-		return reconcile.Result{}, err
+		log.Error(err, "failed to create label selector from Service spec")
+		return ctrl.Result{}, err
 	}
 
 	pods := &corev1.PodList{}
 	if err := r.List(ctx, pods, &client.ListOptions{
 		LabelSelector: selector,
 	}); err != nil {
-		return reconcile.Result{}, fmt.Errorf("failed to list Pods: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to list Pods: %w", err)
 	}
 	log.Info("found pods", "count", len(pods.Items))
 	debug.Info("pods spec", "list", pods)
+
+	config, err := endpointsliceac.ApplyConfig(svc, pods.Items, r.Client)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to create endpointSlice apply configuration: %w", err)
+	}
+	r.Log.Info("applying changes to endpointSlice", "name", config.Name, "config", config)
+
+	if err := r.Apply(ctx, config, &client.ApplyOptions{
+		FieldManager: r.ControllerName,
+	}); err != nil {
+		r.Log.Error(err, "failed to apply changes to endpointSlice")
+		return ctrl.Result{}, fmt.Errorf("failed to apply changes to endpointSlice: %w", err)
+	}
 
 	return ctrl.Result{}, nil
 }
