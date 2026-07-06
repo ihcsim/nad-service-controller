@@ -2,6 +2,7 @@ package endpointslice
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,10 +17,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+var (
+	ErrMsgInvalidPodReadinessCondition = errors.New("pod is both serving and terminating, which is an invalid state")
+	ErrMsgInvalidPodIP                 = errors.New("pod does not have a valid IP address")
+)
+
 // ApplyConfig creates an EndpointSliceApplyConfiguration for the endpoint slice of the given service.
 // the service becomes the owner of the endpoint slice, and the endpoint slice will have the same name as the service with a suffix of "-<random-string>".
 // the slice contains endpoints that are backed by the given pods.
 func ApplyConfig(svc *corev1.Service, pods []corev1.Pod, client client.Client) (*discv1ac.EndpointSliceApplyConfiguration, error) {
+	// one pod address per endpoint apply configuration
 	endpoints := []*discv1ac.EndpointApplyConfiguration{}
 	for _, pod := range pods {
 		nodeName := pod.Spec.NodeName
@@ -28,6 +35,7 @@ func ApplyConfig(svc *corev1.Service, pods []corev1.Pod, client client.Client) (
 			return nil, fmt.Errorf("failed to get Node %s for Pod %s: %w", nodeName, pod.GetName(), err)
 		}
 
+		// check for topology-aware label on the node
 		var az string
 		for key, value := range node.GetLabels() {
 			if key == corev1.LabelTopologyZone {
@@ -36,9 +44,35 @@ func ApplyConfig(svc *corev1.Service, pods []corev1.Pod, client client.Client) (
 			}
 		}
 
+		// use the pod's readiness condition to determine if the endpoint is ready
+		// see https://github.com/kubernetes/kubernetes/blob/688614f24c44fe55eb5368171f8b669b9a7928f6/staging/src/k8s.io/endpointslice/utils.go#L39-L43
+		podReady := false
+		podStatus := pod.Status
+		for i := range podStatus.Conditions {
+			if podStatus.Conditions[i].Type == corev1.PodReady && podStatus.Conditions[i].Status == corev1.ConditionTrue {
+				podReady = true
+			}
+		}
+		serving := podReady
+		terminating := pod.DeletionTimestamp != nil
+		if serving && terminating {
+			return nil, fmt.Errorf("%w. pod: %s", ErrMsgInvalidPodReadinessCondition, pod.GetName())
+		}
+		ready := svc.Spec.PublishNotReadyAddresses || (serving && !terminating)
+
+		podIP := pod.Status.PodIP
+		if podIP == "" {
+			return nil, fmt.Errorf("%w. pod: %s", ErrMsgInvalidPodIP, pod.GetName())
+		}
+
 		endpoints = append(endpoints, &discv1ac.EndpointApplyConfiguration{
 			Addresses: []string{pod.Status.PodIP},
-			NodeName:  new(pod.Spec.NodeName),
+			Conditions: &discv1ac.EndpointConditionsApplyConfiguration{
+				Ready:       new(ready),
+				Serving:     new(serving),
+				Terminating: new(terminating),
+			},
+			NodeName: new(pod.Spec.NodeName),
 			TargetRef: &corev1ac.ObjectReferenceApplyConfiguration{
 				Kind:      new("Pod"),
 				Namespace: new(pod.GetNamespace()),

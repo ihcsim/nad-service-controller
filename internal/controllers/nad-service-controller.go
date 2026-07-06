@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -72,6 +74,12 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	config, err := endpointsliceac.ApplyConfig(svc, pods.Items, r.Client)
 	if err != nil {
+		if errors.Is(errors.Unwrap(err), endpointsliceac.ErrMsgInvalidPodReadinessCondition) || errors.Is(errors.Unwrap(err), endpointsliceac.ErrMsgInvalidPodIP) {
+			return ctrl.Result{
+				Requeue:      true,
+				RequeueAfter: 5 * time.Second,
+			}, nil
+		}
 		return ctrl.Result{}, fmt.Errorf("failed to create endpointSlice apply configuration: %w", err)
 	}
 	r.Log.Info("applying changes to endpointSlice", "name", config.Name, "config", config)
