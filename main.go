@@ -32,12 +32,13 @@ func main() {
 		retryPeriod   = 20 * time.Second
 	)
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		LeaderElection:          true,
-		LeaderElectionID:        ControllerName,
-		LeaderElectionNamespace: ControllerNamespace,
-		LeaseDuration:           &leaseDuration,
-		RenewDeadline:           &renewDeadline,
-		RetryPeriod:             &retryPeriod,
+		LeaderElection:                true,
+		LeaderElectionID:              ControllerName,
+		LeaderElectionNamespace:       ControllerNamespace,
+		LeaderElectionReleaseOnCancel: true,
+		LeaseDuration:                 &leaseDuration,
+		RenewDeadline:                 &renewDeadline,
+		RetryPeriod:                   &retryPeriod,
 		Metrics: ctrlmetrics.Options{
 			SecureServing: true,
 			BindAddress:   ":9443",
