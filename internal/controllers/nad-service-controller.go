@@ -47,7 +47,7 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, fmt.Errorf("failed to get Service: %w", err)
 	}
 
-	network, exists := svc.GetAnnotations()[indexer.ServiceNetworkAnnotation]
+	namespacedNetwork, exists := svc.GetAnnotations()[indexer.ServiceNetworkAnnotation]
 	if !exists {
 		log.Info("skipping service", "reason", "don't have required annotation", "annotation", indexer.ServiceNetworkAnnotation)
 		return ctrl.Result{}, nil
@@ -55,15 +55,15 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// prefix network with namespace to match the convention used in the pods'
 	// network-status annotation
-	network = fmt.Sprintf("%s/%s", svc.GetNamespace(), network)
-	log.Info("found network", "network", network)
+	namespacedNetwork = fmt.Sprintf("%s/%s", svc.GetNamespace(), namespacedNetwork)
+	log.Info("found network", "network", namespacedNetwork)
 
 	// find pods with the cni network-status annotation matching the network of the
 	// service
 	var (
 		pods           = &corev1.PodList{}
 		listOpts       = &client.ListOptions{}
-		matchingFields = client.MatchingFields{indexer.IndexKeyPodNetwork: network}
+		matchingFields = client.MatchingFields{indexer.IndexKeyPodNetwork: namespacedNetwork}
 	)
 	matchingFields.ApplyToList(listOpts)
 	if err := r.List(ctx, pods, listOpts); err != nil {
@@ -73,7 +73,7 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	debug.Info("pods spec", "spec", pods)
 
 	// use server-side apply to synchronize the endpoint slice with the service and pods
-	config, err := endpointsliceac.ApplyConfig(svc, pods.Items, network, r.Client)
+	config, err := endpointsliceac.ApplyConfig(svc, pods.Items, namespacedNetwork, r.Client)
 	if err != nil {
 		if retryableError(err) {
 			log.Error(err, "failed to create endpoint slice apply configuration, will retry")
