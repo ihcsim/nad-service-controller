@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -13,20 +14,15 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/fields"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrllog "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	endpointsliceac "github.com/ihcsim/nad-service-controller/internal/controllers/applyconfiguration/endpointslice"
-)
-
-const (
-	serviceAnnotation          = "isim.dev/networks"
-	IndexKeyServicePodSelector = "svc.pod.selector"
+	"github.com/ihcsim/nad-service-controller/internal/indexer"
+	networkv1 "github.com/ihcsim/nad-service-controller/pkg/apis/k8s.cni.cncf.io/network/v1"
 )
 
 type NADServiceReconciler struct {
@@ -39,6 +35,7 @@ type NADServiceReconciler struct {
 func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Log), "service", req.NamespacedName)
 	debug := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Debug), "service", req.NamespacedName)
+	log.Info("reconciling service")
 
 	svc := &corev1.Service{}
 	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
@@ -50,101 +47,130 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, fmt.Errorf("failed to get Service: %w", err)
 	}
 
-	network, exists := svc.GetAnnotations()[serviceAnnotation]
+	network, exists := svc.GetAnnotations()[indexer.ServiceNetworkAnnotation]
 	if !exists {
-		log.Info("skipping service", "reason", "don't have required annotation", "annotation", serviceAnnotation)
+		log.Info("skipping service", "reason", "don't have required annotation", "annotation", indexer.ServiceNetworkAnnotation)
 		return ctrl.Result{}, nil
 	}
+
+	// prefix network with namespace to match the convention used in the pods'
+	// network-status annotation
+	network = fmt.Sprintf("%s/%s", svc.GetNamespace(), network)
 	log.Info("found network", "network", network)
 
-	selector, err := labels.Set(svc.Spec.Selector).AsValidatedSelector()
-	if err != nil {
-		log.Error(err, "failed to create label selector from Service spec")
-		return ctrl.Result{}, err
-	}
-
-	pods := &corev1.PodList{}
-	if err := r.List(ctx, pods, &client.ListOptions{
-		LabelSelector: selector,
-	}); err != nil {
+	// find pods with the cni network-status annotation matching the network of the
+	// service
+	var (
+		pods           = &corev1.PodList{}
+		listOpts       = &client.ListOptions{}
+		matchingFields = client.MatchingFields{indexer.IndexKeyPodNetwork: network}
+	)
+	matchingFields.ApplyToList(listOpts)
+	if err := r.List(ctx, pods, listOpts); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list Pods: %w", err)
 	}
 	log.Info("found pods", "count", len(pods.Items))
-	debug.Info("pods spec", "list", pods)
+	debug.Info("pods spec", "spec", pods)
 
-	config, err := endpointsliceac.ApplyConfig(svc, pods.Items, r.Client)
+	// use server-side apply to synchronize the endpoint slice with the service and pods
+	config, err := endpointsliceac.ApplyConfig(svc, pods.Items, network, r.Client)
 	if err != nil {
-		if errors.Is(errors.Unwrap(err), endpointsliceac.ErrMsgInvalidPodReadinessCondition) || errors.Is(errors.Unwrap(err), endpointsliceac.ErrMsgInvalidPodIP) {
+		if retryableError(err) {
+			log.Error(err, "failed to create endpoint slice apply configuration, will retry")
 			return ctrl.Result{
 				Requeue:      true,
 				RequeueAfter: 5 * time.Second,
 			}, nil
 		}
-		return ctrl.Result{}, fmt.Errorf("failed to create endpointSlice apply configuration: %w", err)
+		return ctrl.Result{}, fmt.Errorf("failed to create endpoint slice apply configuration: %w", err)
 	}
-	r.Log.Info("applying changes to endpointSlice", "name", config.Name, "config", config)
+	log.Info("applying changes to endpoint slice", "name", config.Name)
+	debug.Info("config spec", "spec", config)
 
 	if err := r.Apply(ctx, config, &client.ApplyOptions{
 		FieldManager: r.ControllerName,
 	}); err != nil {
-		r.Log.Error(err, "failed to apply changes to endpointSlice")
-		return ctrl.Result{}, fmt.Errorf("failed to apply changes to endpointSlice: %w", err)
+		log.Error(err, "failed to apply changes to endpoint slice")
+		return ctrl.Result{}, fmt.Errorf("failed to apply changes to endpoint slice: %w", err)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// FindServicesForPod finds all services that have a selector matching the labels of the given pod.
-func (r *NADServiceReconciler) FindServicesForPod(ctx context.Context, pod client.Object) []reconcile.Request {
-	svcChan := make(chan types.NamespacedName)
+func retryableError(err error) bool {
+	return errors.Is(errors.Unwrap(err), endpointsliceac.ErrMsgInvalidPodReadinessCondition) ||
+		errors.Is(errors.Unwrap(err), endpointsliceac.ErrMsgEmptyPodNetworkIPs)
+}
 
-	// requests holds the list of reconcile.Requests with the name of the services to be reconciled.
-	requests := []reconcile.Request{}
+// SyncServicesForPod finds all services that are annotated with the network name that the specified pod is a part of.
+func (r *NADServiceReconciler) SyncServicesForPod(ctx context.Context, pod client.Object) []ctrl.Request {
+	log := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Log), "pod", fmt.Sprintf("%s/%s", pod.GetNamespace(), pod.GetName()))
+	debug := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Debug), "pod", fmt.Sprintf("%s/%s", pod.GetNamespace(), pod.GetName()))
+	log.Info("syncing services in response to pod event")
+
+	// requests holds the list of ctrl.Requests containing the name of the services to be reconciled,
+	// in response to pod event.
+	requests := []ctrl.Request{}
+	svcChan := make(chan types.NamespacedName)
 	go func() {
 		for svc := range svcChan {
-			r.Log.Info("found service for pod", "service", svc.Name, "pod", pod.GetName())
-			requests = append(requests, reconcile.Request{
+			log.Info("queueing service", "service", svc)
+			requests = append(requests, ctrl.Request{
 				NamespacedName: svc,
 			})
 		}
 	}()
 
+	annotation, exists := pod.GetAnnotations()[networkv1.NetworkStatusAnnot]
+	if !exists {
+		return nil
+	}
+
+	// unmarshal the JSON annotation into a slice of NetworkSelectionElement structs
+	raw := []byte(annotation)
+	if !json.Valid([]byte(raw)) {
+		log.Error(fmt.Errorf("invalid JSON"), "failed to unmarshal network selection elements from pod annotation", "annotation", annotation)
+		return nil
+	}
+
+	var networkSelectionElements []networkv1.NetworkSelectionElement
+	if err := json.Unmarshal(raw, &networkSelectionElements); err != nil {
+		log.Error(err, "failed to unmarshal network selection elements from pod annotations", "annotation", annotation)
+		return nil
+	}
+
 	wg := sync.WaitGroup{}
 LOOP:
-	for k, v := range pod.GetLabels() {
+	for _, element := range networkSelectionElements {
 		select {
 		case <-ctx.Done():
 			break LOOP
 		default:
 			wg.Add(1)
-			go func(k, v string) {
+			go func(networkName string) {
 				defer wg.Done()
 				svcs := &corev1.ServiceList{}
 				listOpts := &client.ListOptions{
-					FieldSelector: fields.OneTermEqualSelector(IndexKeyServicePodSelector, fmt.Sprintf("%s=%s", k, v)),
+					FieldSelector: fields.OneTermEqualSelector(indexer.IndexKeyServiceNetwork, networkName),
 					Namespace:     pod.GetNamespace(),
 				}
 				if err := r.List(ctx, svcs, listOpts); err != nil {
-					r.Log.Error(err, "additionalInfo", "failed to list Services for Pod", "pod", pod.GetName())
+					log.Error(err, "failed to list services")
 					return
 				}
 
 				for _, svc := range svcs.Items {
-					for k, v := range svc.GetAnnotations() {
-						if k == serviceAnnotation && v != "" {
-							svcChan <- types.NamespacedName{
-								Name:      svc.GetName(),
-								Namespace: svc.GetNamespace(),
-							}
-						}
+					svcChan <- types.NamespacedName{
+						Name:      svc.GetName(),
+						Namespace: svc.GetNamespace(),
 					}
 				}
-			}(k, v)
+			}(element.Name)
 		}
 	}
 	wg.Wait()
 	close(svcChan)
 
-	r.Debug.Info("exiting watcher")
+	debug.Info("exiting service/pod sync")
 	return requests
 }

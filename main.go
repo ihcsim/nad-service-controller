@@ -2,16 +2,15 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
-	inctrl "github.com/ihcsim/nad-service-controller/internal/controllers"
+	ctrlnad "github.com/ihcsim/nad-service-controller/internal/controllers"
+	indexer "github.com/ihcsim/nad-service-controller/internal/indexer"
 
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -49,7 +48,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	r := &inctrl.NADServiceReconciler{
+	r := &ctrlnad.NADServiceReconciler{
 		Client:         mgr.GetClient(),
 		ControllerName: ControllerName,
 		Log:            log,
@@ -58,22 +57,23 @@ func main() {
 	if err := ctrl.NewControllerManagedBy(mgr).
 		Named(ControllerName).
 		For(&corev1.Service{}).
-		Watches(&corev1.Pod{}, handler.TypedEnqueueRequestsFromMapFunc(r.FindServicesForPod), builder.WithPredicates()).
+		Watches(&corev1.Pod{}, handler.TypedEnqueueRequestsFromMapFunc(r.SyncServicesForPod), builder.WithPredicates()).
 		Complete(r); err != nil {
 		log.Error(err, "could not create controller")
 		os.Exit(1)
 	}
 
-	// set up indices based on service's spec.selector for faster pods selection
-	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Service{}, inctrl.IndexKeyServicePodSelector, func(obj client.Object) []string {
-		svc := obj.(*corev1.Service)
-		var indexValues []string
-		for k, v := range svc.Spec.Selector {
-			indexValues = append(indexValues, fmt.Sprintf("%s=%s", k, v))
-		}
-		return indexValues
-	}); err != nil {
-		log.Error(err, "could not create field indexer")
+	// set up index to search services by their network. the index values are used
+	// as field selector in the controller's list calls
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Service{}, indexer.IndexKeyServiceNetwork, indexer.ServiceByNetworkFunc); err != nil {
+		log.Error(err, "could not create field indexer for corev1/service")
+		os.Exit(1)
+	}
+
+	// set up index to search pods by their network. the index values are used as
+	// field selector in the contoller's list calls
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, indexer.IndexKeyPodNetwork, indexer.PodByNetworkFunc); err != nil {
+		log.Error(err, "could not create field indexer for corev1/service")
 		os.Exit(1)
 	}
 
