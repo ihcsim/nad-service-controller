@@ -109,7 +109,7 @@ func podTopology(node *corev1.Node) string {
 }
 
 // see https://github.com/kubernetes/kubernetes/blob/688614f24c44fe55eb5368171f8b669b9a7928f6/staging/src/k8s.io/endpointslice/utils.go#L39-L43
-func readiness(pod *corev1.Pod, svc *corev1.Service) (serving, terminating, ready bool) {
+func readiness(pod *corev1.Pod, svc *corev1.Service) (serving, ready, terminating bool) {
 	podReady := false
 	podStatus := pod.Status
 	for i := range podStatus.Conditions {
@@ -143,7 +143,7 @@ func podNetworkIPs(pod *corev1.Pod, network string) ([]string, error) {
 	var ipAddrs []string
 	for _, element := range networkSelectionElements {
 		if element.Name == network {
-			copy(ipAddrs, element.IPRequest)
+			ipAddrs = append(ipAddrs, element.IPRequest...)
 			break
 		}
 	}
