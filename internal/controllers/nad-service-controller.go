@@ -34,7 +34,6 @@ type NADServiceReconciler struct {
 func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Log), "service", req.NamespacedName)
 	debug := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Debug), "service", req.NamespacedName)
-	log.Info("reconciling service")
 
 	svc := &corev1.Service{}
 	if err := r.Get(ctx, req.NamespacedName, svc); err != nil {
@@ -55,7 +54,7 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// prefix network with namespace to match the convention used in the pods'
 	// network-status annotation
 	namespacedNetwork = fmt.Sprintf("%s/%s", svc.GetNamespace(), namespacedNetwork)
-	log.Info("found network", "network", namespacedNetwork)
+	log.Info("found service network", "network", namespacedNetwork)
 
 	// find pods with the cni network-status annotation matching the network of the
 	// service
