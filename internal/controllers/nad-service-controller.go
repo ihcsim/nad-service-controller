@@ -13,7 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -61,8 +60,10 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	// find pods with the cni network-status annotation matching the network of the
 	// service
 	var (
-		pods           = &corev1.PodList{}
-		listOpts       = &client.ListOptions{}
+		pods     = &corev1.PodList{}
+		listOpts = &client.ListOptions{
+			Namespace: svc.GetNamespace(),
+		}
 		matchingFields = client.MatchingFields{indexer.IndexKeyPodNetwork: namespacedNetwork}
 	)
 	matchingFields.ApplyToList(listOpts)
@@ -106,7 +107,6 @@ func retryableError(err error) bool {
 func (r *NADServiceReconciler) SyncServicesForPod(ctx context.Context, pod client.Object) []ctrl.Request {
 	log := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Log), "pod", fmt.Sprintf("%s/%s", pod.GetNamespace(), pod.GetName()))
 	debug := ctrllog.FromContext(ctrllog.IntoContext(ctx, r.Debug), "pod", fmt.Sprintf("%s/%s", pod.GetNamespace(), pod.GetName()))
-	log.Info("syncing services in response to pod event")
 
 	// requests holds the list of ctrl.Requests containing the name of the services to be reconciled,
 	// in response to pod event.
@@ -114,7 +114,7 @@ func (r *NADServiceReconciler) SyncServicesForPod(ctx context.Context, pod clien
 	svcChan := make(chan types.NamespacedName)
 	go func() {
 		for svc := range svcChan {
-			log.Info("queueing service", "service", svc)
+			log.Info("syncing service in response to pod event", "service", svc)
 			requests = append(requests, ctrl.Request{
 				NamespacedName: svc,
 			})
@@ -149,11 +149,15 @@ LOOP:
 			wg.Add(1)
 			go func(networkName string) {
 				defer wg.Done()
-				svcs := &corev1.ServiceList{}
-				listOpts := &client.ListOptions{
-					FieldSelector: fields.OneTermEqualSelector(indexer.IndexKeyServiceNetwork, networkName),
-					Namespace:     pod.GetNamespace(),
-				}
+
+				var (
+					svcs     = &corev1.ServiceList{}
+					listOpts = &client.ListOptions{
+						Namespace: pod.GetNamespace(),
+					}
+					matchingFields = client.MatchingFields{indexer.IndexKeyServiceNetwork: networkName}
+				)
+				matchingFields.ApplyToList(listOpts)
 				if err := r.List(ctx, svcs, listOpts); err != nil {
 					log.Error(err, "failed to list services")
 					return

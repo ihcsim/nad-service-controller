@@ -20,15 +20,16 @@ var log = ctrllog.FromContext(context.Background()).WithName("indexer")
 func ServiceByNetworkFunc(obj client.Object) []string {
 	log := log.WithValues("service", fmt.Sprintf("%s/%s", obj.GetNamespace(), obj.GetName()))
 	svc := obj.(*corev1.Service)
-	annotation, exists := svc.GetAnnotations()[ServiceNetworkAnnotation]
+	network, exists := svc.GetAnnotations()[ServiceNetworkAnnotation]
 	if !exists {
 		return nil
 	}
 
 	// TODO make sure NAD exists and is valid, otherwise return nil to avoid indexing invalid network names
 
-	log.Info("indexing service", "service", svc.GetName(), "network", annotation)
-	return []string{annotation}
+	indexValue := fmt.Sprintf("%s/%s", svc.GetNamespace(), network)
+	log.Info("indexing service", "indexValues", indexValue)
+	return []string{indexValue}
 }
 
 // PodByNetworkFunc is an index function that indexes pods by their associated
@@ -66,6 +67,6 @@ func PodByNetworkFunc(obj client.Object) []string {
 		indexValues = append(indexValues, element.Name)
 	}
 
-	log.Info("indexing pod", "networks", indexValues, "networkDetails", networkSelectionElements)
+	log.Info("indexing pod", "indexValues", indexValues)
 	return indexValues
 }
