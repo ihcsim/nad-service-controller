@@ -22,12 +22,15 @@ func ServiceByNetworkFunc(obj client.Object) []string {
 	svc := obj.(*corev1.Service)
 	network, exists := svc.GetAnnotations()[ServiceNetworkAnnotation]
 	if !exists {
-		return nil
+		return []string{}
 	}
 
 	// TODO make sure NAD exists and is valid, otherwise return nil to avoid indexing invalid network names
 
-	indexValue := fmt.Sprintf("%s/%s", svc.GetNamespace(), network)
+	indexValue := network
+	if svc.GetNamespace() != "" {
+		indexValue = fmt.Sprintf("%s/%s", svc.GetNamespace(), indexValue)
+	}
 	log.Info("indexing service", "indexValues", indexValue)
 	return []string{indexValue}
 }
