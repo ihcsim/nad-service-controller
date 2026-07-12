@@ -27,7 +27,9 @@ var (
 
 // ApplyConfig creates an EndpointSliceApplyConfiguration for the endpoint slice of the given service.
 // the service becomes the owner of the endpoint slice, and the endpoint slice will have the same name as the service with a suffix of "-<random-string>".
-// the slice contains endpoints that are backed by the given pods.
+// the slice contains endpoints that are backed by the given pods. this list of pods only include pods that have not been deleted by K8s, but may include terminating ones.
+// the pods' readiness state is reflected in the endpoints' conditions.
+// the endpoint slice will have the same ports as the service.
 func ApplyConfig(svc *corev1.Service, pods []corev1.Pod, network string, client client.Client) (*discv1ac.EndpointSliceApplyConfiguration, error) {
 	// one pod address per endpoint apply configuration
 	endpoints := []*discv1ac.EndpointApplyConfiguration{}

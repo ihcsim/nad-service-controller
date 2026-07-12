@@ -5,10 +5,251 @@ import (
 	"reflect"
 	"testing"
 
-	networkv1 "github.com/ihcsim/nad-service-controller/pkg/apis/k8s.cni.cncf.io/network/v1"
 	corev1 "k8s.io/api/core/v1"
+	discv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	metatypes "k8s.io/apimachinery/pkg/types"
+
+	corev1ac "k8s.io/client-go/applyconfigurations/core/v1"
+	discv1ac "k8s.io/client-go/applyconfigurations/discovery/v1"
+	metav1ac "k8s.io/client-go/applyconfigurations/meta/v1"
+
+	networkv1 "github.com/ihcsim/nad-service-controller/pkg/apis/k8s.cni.cncf.io/network/v1"
+
+	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func TestApplyConfig(t *testing.T) {
+	// this test case generates the ApplyConfig for an endpointslice of a service
+	// backed by three pods, one of which is terminating. the ApplyConfig should
+	// contain three endpoints, with IP addresses derived from the pods' network
+	// annotations, and the conditions of each endpoint should reflect whether the
+	// pod is ready, serving, or terminating. specifically, the endpoint
+	// corresponding to the terminating pod should have its "terminating" condition
+	// set to true, while the other two endpoints should have "ready" and "serving"
+	// conditions set to true.
+
+	now := metav1.Now()
+	network := "default/macvlan"
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node",
+			Labels: map[string]string{
+				corev1.LabelTopologyZone: "us-east-1a",
+			},
+		},
+	}
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "nginx",
+			UID:  "12345",
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name:     "http",
+					Protocol: corev1.ProtocolTCP,
+					Port:     80,
+				},
+				{
+					Name:     "https",
+					Protocol: corev1.ProtocolTCP,
+					Port:     443,
+				},
+			},
+		},
+	}
+	pods := []corev1.Pod{
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nginx-01",
+				Namespace: "default",
+				UID:       "1234567",
+				Annotations: map[string]string{
+					networkv1.NetworkStatusAnnot: `[
+						{
+            	"name": "default/macvlan",
+            	"interface": "net3",
+            	"ips": ["192.168.2.201"],
+              "mac": "d2:97:24:44:b4:fd",
+              "dns": {},
+              "gateway": ["\u003cnil\u003e"]
+        		}]`,
+				},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "node",
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "nginx-02",
+				Namespace: "default",
+				UID:       "89101112",
+				Annotations: map[string]string{
+					networkv1.NetworkStatusAnnot: `[
+						{
+            	"name": "default/macvlan",
+            	"interface": "net3",
+            	"ips": ["192.168.2.202"],
+              "mac": "d2:97:24:44:b4:fd",
+              "dns": {},
+              "gateway": ["\u003cnil\u003e"]
+        		}]`,
+				},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "node",
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "nginx-03",
+				Namespace:         "default",
+				DeletionTimestamp: &now,
+				UID:               "13141516",
+				Finalizers:        []string{"finalizer-to-for-fake-client"},
+				Annotations: map[string]string{
+					networkv1.NetworkStatusAnnot: `[
+						{
+            	"name": "default/macvlan",
+            	"interface": "net3",
+            	"ips": ["192.168.2.203"],
+              "mac": "d2:97:24:44:b4:fd",
+              "dns": {},
+              "gateway": ["\u003cnil\u003e"]
+        		}]`,
+				},
+			},
+			Spec: corev1.PodSpec{
+				NodeName: "node",
+			},
+			Status: corev1.PodStatus{
+				Conditions: []corev1.PodCondition{
+					{
+						Type:   corev1.PodReady,
+						Status: corev1.ConditionFalse,
+					},
+				},
+			},
+		},
+	}
+	expected := &discv1ac.EndpointSliceApplyConfiguration{
+		TypeMetaApplyConfiguration: metav1ac.TypeMetaApplyConfiguration{
+			APIVersion: new("discovery.k8s.io/v1"),
+			Kind:       new("EndpointSlice"),
+		},
+		ObjectMetaApplyConfiguration: &metav1ac.ObjectMetaApplyConfiguration{
+			Name:      new("nginx-slice"),
+			Namespace: new(""),
+			Labels: map[string]string{
+				discv1.LabelServiceName: svc.GetName(),
+			},
+			OwnerReferences: []metav1ac.OwnerReferenceApplyConfiguration{
+				{
+					Kind:       new("Service"),
+					APIVersion: new(svc.APIVersion),
+					Name:       new(svc.GetName()),
+					UID:        new(svc.GetUID()),
+				},
+			},
+		},
+		AddressType: new(discv1.AddressTypeIPv4),
+		Endpoints: []discv1ac.EndpointApplyConfiguration{
+			{
+				Addresses: []string{"192.168.2.201"},
+				Conditions: &discv1ac.EndpointConditionsApplyConfiguration{
+					Ready:       new(true),
+					Serving:     new(true),
+					Terminating: new(false),
+				},
+				NodeName: new(node.GetName()),
+				TargetRef: &corev1ac.ObjectReferenceApplyConfiguration{
+					Kind:      new("Pod"),
+					Namespace: new("default"),
+					Name:      new("nginx-01"),
+					UID:       new(metatypes.UID("1234567")),
+				},
+				Zone: new("us-east-1a"),
+			},
+			{
+				Addresses: []string{"192.168.2.202"},
+				Conditions: &discv1ac.EndpointConditionsApplyConfiguration{
+					Ready:       new(true),
+					Serving:     new(true),
+					Terminating: new(false),
+				},
+				NodeName: new(node.GetName()),
+				TargetRef: &corev1ac.ObjectReferenceApplyConfiguration{
+					Kind:      new("Pod"),
+					Namespace: new("default"),
+					Name:      new("nginx-02"),
+					UID:       new(metatypes.UID("89101112")),
+				},
+				Zone: new("us-east-1a"),
+			},
+			{
+				Addresses: []string{"192.168.2.203"},
+				Conditions: &discv1ac.EndpointConditionsApplyConfiguration{
+					Ready:       new(false),
+					Serving:     new(false),
+					Terminating: new(true),
+				},
+				NodeName: new(node.GetName()),
+				TargetRef: &corev1ac.ObjectReferenceApplyConfiguration{
+					Kind:      new("Pod"),
+					Namespace: new("default"),
+					Name:      new("nginx-03"),
+					UID:       new(metatypes.UID("13141516")),
+				},
+				Zone: new("us-east-1a"),
+			},
+		},
+		Ports: []discv1ac.EndpointPortApplyConfiguration{
+			{
+				Name:     new("http"),
+				Protocol: new(corev1.ProtocolTCP),
+				Port:     new(int32(80)),
+			},
+			{
+				Name:     new("https"),
+				Protocol: new(corev1.ProtocolTCP),
+				Port:     new(int32(443)),
+			},
+		},
+	}
+
+	objs := []runtime.Object{svc, node}
+	for _, pod := range pods {
+		objs = append(objs, &pod)
+	}
+	client := fakeclient.NewFakeClient(objs...)
+	actual, err := ApplyConfig(svc, pods, network, client)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(actual, expected) {
+		t.Errorf("unexpected result: expected %+v,\ngot %+v", expected, actual)
+	}
+}
 
 func TestPodTopology(t *testing.T) {
 	testCases := []struct {
