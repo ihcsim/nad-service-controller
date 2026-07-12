@@ -1,0 +1,7 @@
+defaultPlatforms:
+  - linux/arm64
+  - linux/amd64
+build:
+  - id: default
+    dir: .
+    main: .
