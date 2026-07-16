@@ -1,7 +1,11 @@
 defaultPlatforms:
   - linux/arm64
   - linux/amd64
-build:
-  - id: default
+builds:
+  - id: main
     dir: .
     main: .
+    ldflags:
+      - -s
+      - -w
+      - -X main.Version={{ .Git.Tag }}-{{ .Git.ShortCommit }}-{{ .Git.TreeState }}

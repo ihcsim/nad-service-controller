@@ -15,10 +15,16 @@ test:
 lint:
 	golangci-lint run ./...
 
+run:
+	go run -ldflags="-s -w -X main.Version=$(shell git rev-parse --short HEAD)" main.go
+
 .PHONY: testdata
 testdata:
 	$(KUBECTL) delete -f testdata
 	$(KUBECTL) apply -f testdata
+
+image-local:
+	 ko build --local ./
 
 image:
 	KO_DOCKER_REPO=ghcr.io/ihcsim/nad-service-controller \

@@ -21,9 +21,12 @@ const (
 	ControllerNamespace = "kube-system"
 )
 
+var Version = "dev"
+
 func main() {
 	ctrl.SetLogger(zap.New())
 	log := ctrl.Log.WithName(ControllerName)
+	log.Info("starting controller", "version", Version)
 
 	var (
 		leaseDuration = 100 * time.Second
