@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nad-service-controller
+  labels:
+    app.kubernetes.io/name: nad-service-controller
+    app.kubernetes.io/component: controller
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nad-service-controller
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nad-service-controller
+        app.kubernetes.io/component: controller
+    spec:
+      containers:
+        - name: controller
+          image: ko://github.com/ihcsim/nad-service-controller
+          resources:
+            requests:
+              cpu: 250m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi

@@ -30,3 +30,12 @@ image:
 	KO_DOCKER_REPO=ghcr.io/ihcsim/nad-service-controller \
 	GITHUB_TOKEN="$(GITHUB_TOKEN)" \
 	$(KO) build --bare ./
+
+apply:
+	ko apply -f deploy.yaml
+
+delete:
+	ko delete -f deploy.yaml
+
+release:
+	ko resolve -f deploy.yaml > release.yaml
