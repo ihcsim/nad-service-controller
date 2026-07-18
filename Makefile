@@ -29,7 +29,7 @@ multus:
 
 .PHONY: testdata
 testdata:
-	$(KUBECTL) delete -f testdata
+	$(KUBECTL) delete --ignore-not-found -f testdata
 	$(KUBECTL) apply -f testdata
 
 image-local:

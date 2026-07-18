@@ -11,9 +11,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 )
 
 const (
@@ -57,10 +59,18 @@ func main() {
 		Log:            log,
 		Debug:          log.V(3),
 	}
+	eventPredicate := predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		svc, ok := obj.(*corev1.Service)
+		if !ok {
+			return false
+		}
+		return svc.GetAnnotations()[indexer.ServiceNetworkAnnotation] != ""
+	})
 	if err := ctrl.NewControllerManagedBy(mgr).
 		Named(ControllerName).
 		For(&corev1.Service{}).
 		Watches(&corev1.Pod{}, handler.TypedEnqueueRequestsFromMapFunc(r.SyncServicesForPod), builder.WithPredicates()).
+		WithEventFilter(eventPredicate).
 		Complete(r); err != nil {
 		log.Error(err, "could not create controller")
 		os.Exit(1)
