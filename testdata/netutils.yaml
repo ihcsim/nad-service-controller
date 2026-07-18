@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netutils-base
+  labels:
+    app: netutils-base
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: netutils-base
+  template:
+    metadata:
+      labels:
+        app: netutils-base
+    spec:
+      containers:
+        - name: netutils-base
+          image: isim/netutils:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: 1
+            requests:
+              cpu: 0.1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netutils-nad
+  labels:
+    app: netutils-nad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: netutils-nad
+  template:
+    metadata:
+      annotations:
+        k8s.v1.cni.cncf.io/networks: |
+          [
+            {
+              "name": "macvlan",
+              "default-route": ["192.168.2.1"]
+            }
+          ]
+      labels:
+        app: netutils-nad
+    spec:
+      containers:
+        - name: netutils-nad
+          image: isim/netutils:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          resources:
+            limits:
+              cpu: 1
+            requests:
+              cpu: 0.1
