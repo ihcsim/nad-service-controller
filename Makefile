@@ -2,9 +2,12 @@ GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
 KUBECTL ?= kubectl
+HELM ?= helm
 KO ?= ko
 KIND ?= kind
 KIND_CLUSTER_NAME ?= isim-dev
+
+WHEREABOUTS_VERSION ?= 0.9.4
 
 GITHUB_TOKEN ?=
 
@@ -23,9 +26,23 @@ run:
 .PHONY: kind
 kind:
 	$(KIND) create cluster --name $(KIND_CLUSTER_NAME) --config kind/kind.yaml
+	$(MAKE) multus
+	$(MAKE) whereabouts
+	$(MAKE) nad
+
+multus:
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 	$(KUBECTL) -n kube-system wait --for condition=Ready po -lapp=multus
+
+nad:
 	$(KUBECTL) apply -f kind/nad-macvlan.yaml
+
+whereabouts:
+	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_ippools.yaml
+	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_nodeslicepools.yaml
+	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
+	$(HELM) template whereabouts oci://ghcr.io/k8snetworkplumbingwg/whereabouts-chart --version $(WHEREABOUTS_VERSION) | $(KUBECTL) apply -f -
+	$(KUBECTL) -n kube-system wait --for condition=Ready po -lapp=whereabouts-chart
 
 purge:
 	$(KIND) delete cluster --name $(KIND_CLUSTER_NAME)

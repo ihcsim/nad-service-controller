@@ -10,13 +10,7 @@ spec:
       "master": "eth0",
       "mode": "bridge",
       "ipam": {
-        "type": "host-local",
-        "subnet": "192.168.2.0/24",
-        "rangeStart": "192.168.2.200",
-        "rangeEnd": "192.168.2.216",
-        "routes": [
-          { "dst": "0.0.0.0/0" }
-        ],
-        "gateway": "192.168.2.1"
+        "type": "whereabouts",
+        "range": "192.168.2.0/24"
       }
     }
