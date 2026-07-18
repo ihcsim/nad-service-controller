@@ -23,6 +23,10 @@ run:
 kind:
 	$(KIND) create cluster --name $(KIND_CLUSTER_NAME) --config kind.yaml
 
+multus:
+	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
+	$(KUBECTL) -n kube-system wait --for condition=Ready po -lapp=multus
+
 .PHONY: testdata
 testdata:
 	$(KUBECTL) delete -f testdata
