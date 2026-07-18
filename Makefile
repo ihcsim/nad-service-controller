@@ -29,7 +29,7 @@ testdata:
 	$(KUBECTL) apply -f testdata
 
 image-local:
-	 ko build --local ./
+	 $(KO) build --local ./
 
 image:
 	KO_DOCKER_REPO=ghcr.io/ihcsim/nad-service-controller \
@@ -37,10 +37,10 @@ image:
 	$(KO) build --bare ./
 
 apply:
-	ko apply -f deploy.yaml
+	$(KO) apply -f deploy.yaml
 
 delete:
-	ko delete -f deploy.yaml
+	$(KO) delete -f deploy.yaml
 
 release:
-	ko resolve -f deploy.yaml > release.yaml
+	$(KO) resolve -f deploy.yaml > release.yaml
