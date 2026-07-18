@@ -20,12 +20,15 @@ lint:
 run:
 	go run -ldflags="-s -w -X main.Version=$(shell git rev-parse --short HEAD)" main.go
 
+.PHONY: kind
 kind:
-	$(KIND) create cluster --name $(KIND_CLUSTER_NAME) --config kind.yaml
-
-multus:
+	$(KIND) create cluster --name $(KIND_CLUSTER_NAME) --config kind/kind.yaml
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
 	$(KUBECTL) -n kube-system wait --for condition=Ready po -lapp=multus
+	$(KUBECTL) apply -f kind/nad-macvlan.yaml
+
+purge:
+	$(KIND) delete cluster --name $(KIND_CLUSTER_NAME)
 
 .PHONY: testdata
 testdata:
