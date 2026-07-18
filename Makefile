@@ -3,6 +3,8 @@ GOARCH ?= $(shell go env GOARCH)
 
 KUBECTL ?= kubectl
 KO ?= ko
+KIND ?= kind
+KIND_CLUSTER_NAME ?= isim-dev
 
 GITHUB_TOKEN ?=
 
@@ -17,6 +19,9 @@ lint:
 
 run:
 	go run -ldflags="-s -w -X main.Version=$(shell git rev-parse --short HEAD)" main.go
+
+kind:
+	$(KIND) create cluster --name $(KIND_CLUSTER_NAME) --config kind.yaml
 
 .PHONY: testdata
 testdata:
