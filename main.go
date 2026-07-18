@@ -7,6 +7,7 @@ import (
 
 	ctrlnad "github.com/ihcsim/nad-service-controller/internal/controllers"
 	indexer "github.com/ihcsim/nad-service-controller/internal/indexer"
+	networkv1 "github.com/ihcsim/nad-service-controller/pkg/apis/k8s.cni.cncf.io/network/v1"
 
 	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -60,11 +61,14 @@ func main() {
 		Debug:          log.V(3),
 	}
 	eventPredicate := predicate.NewPredicateFuncs(func(obj client.Object) bool {
-		svc, ok := obj.(*corev1.Service)
-		if !ok {
+		switch cast := obj.(type) {
+		case *corev1.Service:
+			return cast.GetAnnotations()[indexer.ServiceNetworkAnnotation] != ""
+		case *corev1.Pod:
+			return cast.GetAnnotations()[networkv1.NetworkStatusAnnot] != ""
+		default:
 			return false
 		}
-		return svc.GetAnnotations()[indexer.ServiceNetworkAnnotation] != ""
 	})
 	if err := ctrl.NewControllerManagedBy(mgr).
 		Named(ControllerName).
