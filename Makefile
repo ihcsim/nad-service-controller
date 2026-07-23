@@ -15,13 +15,16 @@ build:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o nad-service-controller main.go
 
 test:
-	go test -cover ./...
+	go test -v -cover ./...
 
 lint:
 	golangci-lint run ./...
 
 run:
 	go run -ldflags="-s -w -X main.Version=$(shell git rev-parse --short HEAD)" main.go
+
+mod:
+	go mod verify
 
 .PHONY: kind
 kind:
