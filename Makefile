@@ -61,7 +61,7 @@ image-local:
 image:
 	KO_DOCKER_REPO=ghcr.io/ihcsim/nad-service-controller \
 	GITHUB_TOKEN="$(GITHUB_TOKEN)" \
-	$(KO) build --bare ./
+	$(KO) build --bare --sbom-dir=sbom ./
 
 apply:
 	$(KO) apply -f deploy.yaml
