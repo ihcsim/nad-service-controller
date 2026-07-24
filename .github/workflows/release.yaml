@@ -1,0 +1,45 @@
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: tag to use for the release
+        required: true
+        type: string
+jobs:
+  image:
+    name: build and push oci image (with sbom)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: stable
+      - uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445
+      - name: image
+        env:
+          GITHUB_TOKEN: ${{ secrets.AUTH_TOKEN }}
+        run: |
+          #!/bin/bash
+          set -euo pipefail
+          IMAGE_REF=$(make image | tail -n1 | cut -d'@' -f2)
+          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
+    outputs:
+      image_ref: ${{ steps.image.outputs.image_ref }}
+  attest:
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+    name: attest artifacts
+    runs-on: ubuntu-latest
+    needs: image
+    steps:
+      - uses: actions/attest@v4
+        with:
+          subject-name: ghcr.io/ihcsim/nad-service-controller
+          subject-digest: ${{ needs.image.outputs.image_ref }}
+          push-to-registry: true
+  #release_page:
