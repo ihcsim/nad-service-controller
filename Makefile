@@ -9,6 +9,7 @@ KIND_CLUSTER_NAME ?= isim-dev
 
 WHEREABOUTS_VERSION ?= 0.9.4
 
+KO_DOCKER_REPO := ghcr.io/ihcsim/nad-service-controller
 GITHUB_TOKEN ?=
 
 build:
@@ -58,16 +59,13 @@ testdata:
 image-local:
 	 $(KO) build --local ./
 
-image:
-	KO_DOCKER_REPO=ghcr.io/ihcsim/nad-service-controller \
+image-release:
+	KO_DOCKER_REPO="$(KO_DOCKER_REPO)" \
 	GITHUB_TOKEN="$(GITHUB_TOKEN)" \
-	$(KO) build --bare --sbom-dir=sbom ./
+	$(KO) resolve --bare --sbom-dir=sbom -f deploy.yaml > release.yaml
 
 apply:
 	$(KO) apply -f deploy.yaml
 
 delete:
 	$(KO) delete -f deploy.yaml
-
-release:
-	$(KO) resolve -f deploy.yaml > release.yaml

@@ -5,6 +5,7 @@ metadata:
   annotations:
     isim.dev/network: "macvlan"
 spec:
+  clusterIP: None
   ports:
     - name: http
       port: 80

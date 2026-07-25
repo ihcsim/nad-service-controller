@@ -66,3 +66,14 @@ make kind multus nad whereabouts
 # delete the KinD cluster
 make purge
 ```
+
+## Release
+
+Create a new tag using `main` as the target branch:
+
+```sh
+tag_version=<tag_version>
+
+git tag -a "${tag_version}" main -m "${tag_version} release"
+
+Manually trigger the `release` GHA workflow.
