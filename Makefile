@@ -9,7 +9,7 @@ KIND_CLUSTER_NAME ?= isim-dev
 
 WHEREABOUTS_VERSION ?= 0.9.4
 
-KO_DOCKER_REPO := ghcr.io/ihcsim/nad-service-controller
+KO_DOCKER_REPO ?= ghcr.io/ihcsim/nad-service-controller
 GITHUB_TOKEN ?=
 
 build:
@@ -48,6 +48,8 @@ whereabouts:
 	$(HELM) template whereabouts oci://ghcr.io/k8snetworkplumbingwg/whereabouts-chart --version $(WHEREABOUTS_VERSION) | $(KUBECTL) apply -f -
 	$(KUBECTL) -n kube-system wait --for condition=Ready po -lapp=whereabouts-chart
 
+cluster: kind multus whereabouts nad
+
 purge:
 	$(KIND) delete cluster --name $(KIND_CLUSTER_NAME)
 
@@ -64,7 +66,9 @@ image-release:
 	GITHUB_TOKEN="$(GITHUB_TOKEN)" \
 	$(KO) resolve --bare --sbom-dir=sbom -f deploy.yaml > release.yaml
 
-apply:
+apply-kind:
+	KO_DOCKER_REPO=kind.local \
+	KIND_CLUSTER_NAME=$(KIND_CLUSTER_NAME) \
 	$(KO) apply -f deploy.yaml
 
 delete:
