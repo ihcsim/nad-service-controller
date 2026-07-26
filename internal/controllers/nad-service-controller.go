@@ -51,6 +51,16 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
+	if svc.Spec.ClusterIP != "None" {
+		log.Info("skipping service", "reason", "only works with headless service. spec.clusterIP should be 'None'")
+		return ctrl.Result{}, nil
+	}
+
+	if len(svc.Spec.Selector) > 0 {
+		log.Info("skipping service", "reason", "only works with service without selectors because the endpointslice must be managed by us. spec.Selector should be nil")
+		return ctrl.Result{}, nil
+	}
+
 	// prefix network with namespace to match the convention used in the pods'
 	// network-status annotation
 	namespacedNetwork = fmt.Sprintf("%s/%s", svc.GetNamespace(), namespacedNetwork)
