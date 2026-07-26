@@ -1,0 +1,166 @@
+name: Integration Test with KinD
+on:
+  schedule:
+    # Weekly, Monday 07:17 UTC (off the hour to avoid runner contention).
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+# assign unique group name to avoid concurrent runs. in the event of multiple
+# runs, queue instead of cancel so an in-flight run can still tear itself down.
+concurrency:
+  group: integration-test
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  integration-test:
+    name: run integration test cases
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      issues: write
+      packages: read
+    env:
+      KIND_CLUSTER_NAME: integration-test
+      # The agent talks to the cluster created by the steps below.
+      KUBECONFIG: ${{ github.workspace }}/.kubeconfig
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: install go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: stable
+      - name: install kubectl
+        uses: azure/setup-kubectl@v4
+      - name: install helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+      - name: install ko
+        uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445
+
+      - name: create cluster
+        run: make cluster
+      - name: verify cluster
+        run: |
+          set -eu
+          kubectl cluster-info
+          kubectl get nodes -o wide
+      - name: run integration test cases
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: >-
+            --max-turns 80
+            --allowedTools "Read,Grep,Glob,Write,Bash(make:*),Bash(kubectl:*),Bash(ko:*),Bash(go:*),Bash(git:*),Bash(jq:*),Bash(sleep:*),Bash(cat:*),Bash(ls:*),Bash(grep:*),Bash(gh issue create:*)"
+          prompt: |
+            # nad-service-controller Integration Tests
+
+            ## Task
+
+            Run the integration test suite for this repository against a K8s
+            cluster and report the outcome. You are on the `HEAD` commit of the
+            branch that triggered this run.
+
+            The authoritative test plan is `integration/testcases.md`. The
+            target commands you need are defined in the `Makefile`.
+
+            The `KUBECONFIG` environment variable is set to a kubeconfig file
+            that points to the K8s cluster you should use for the tests.
+
+            `kubectl`, `make`, and `ko` are already installed — do not try to
+            install them. `make apply-kind` builds the controller image from
+            `HEAD` and loads it directly into the KinD cluster
+            (`KO_DOCKER_REPO=kind.local`), so no registry is involved.
+
+            Steps:
+
+            1. **Preflight.** Verify `kubectl`, `make`, and `ko` are available.
+               If any is missing, stop and report failure — do not install it.
+            2. **Setup.** Follow the *Setup* section of
+               `integration/testcases.md`: the K8s cluster would have been
+               created by GitHub Actions, so just run `make apply-kind`, then
+               `make testdata`. Wait for each stage to become Ready
+               (`kubectl wait`) before continuing.
+            3. **Run.** Execute Test Cases 1 through 6 exactly as specified,
+               gathering the actual cluster state with `kubectl` (and
+               `kubectl exec` for the Test Case 2 connectivity checks) and
+               comparing it to the expected result.
+            4. **Teardown.** Always run `make purge` at the end, even if a test
+               fails. Write both report files described below *before* you
+               purge, since the cluster is gone afterwards.
+
+            ## Reporting
+
+            - Give every test case a clear **PASS** or **FAIL** verdict with a
+              short justification and the relevant `kubectl` evidence, and end
+              with a summary table of all six cases.
+            - Write that report to `/tmp/integration-report.md`.
+            - Write a single word to `/tmp/integration-status.txt`: `PASS` if
+              all six test cases passed, otherwise `FAIL`. This file determines
+              whether the workflow run fails, so it is mandatory.
+            - If any test case fails, or setup could not complete, open an issue
+              with `gh issue create` containing the summary table, the failing
+              case(s), the observed vs. expected state, and enough `kubectl`
+              output to diagnose it. Title it
+              `[integration-test] <short summary>`.
+            - If all six test cases pass, do **not** open an issue.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: publish report
+        if: always()
+        run: |
+          set -u
+          if [ -f /tmp/integration-report.md ]; then
+            cat /tmp/integration-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Integration tests" >> "$GITHUB_STEP_SUMMARY"
+            echo "The agent produced no report." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: collect diagnostics
+        if: always()
+        run: |
+          set -u
+          mkdir -p /tmp/diagnostics
+          kubectl get all -A -o wide > /tmp/diagnostics/resources.txt 2>&1 || true
+          kubectl get endpointslices -A -o yaml > /tmp/diagnostics/endpointslices.yaml 2>&1 || true
+          kubectl describe po -A > /tmp/diagnostics/pods.txt 2>&1 || true
+          kubectl logs -l app.kubernetes.io/name=nad-service-controller --tail=-1 \
+            > /tmp/diagnostics/controller.log 2>&1 || true
+          cp /tmp/integration-report.md /tmp/diagnostics/ 2>/dev/null || true
+
+      - name: upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: integration-diagnostics
+          path: /tmp/diagnostics
+          if-no-files-found: warn
+
+      # Deterministic gate: the job result comes from the status file, not from
+      # the agent's exit code. A missing file counts as a failure.
+      - name: check result
+        if: always()
+        run: |
+          set -eu
+          if [ ! -f /tmp/integration-status.txt ]; then
+            echo "::error::agent did not write /tmp/integration-status.txt"
+            exit 1
+          fi
+          status="$(tr -d '[:space:]' < /tmp/integration-status.txt)"
+          echo "agent reported: ${status}"
+          [ "${status}" = "PASS" ]
+
+      - name: delete cluster
+        if: always()
+        run: make purge || true

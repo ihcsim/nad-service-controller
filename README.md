@@ -43,7 +43,7 @@ make testdata
 Expect to see two sets of workloads labeled `app=nginx-basic` and `app=nginx-nad`:
 
 ```
-$ k get deploy,svc,po -lapp=nginx-basic
+$ kubectl get deploy,svc,po -lapp=nginx-basic
 NAME                          READY   UP-TO-DATE   AVAILABLE   AGE
 deployment.apps/nginx-basic   2/2     2            2           17s
 
@@ -54,7 +54,7 @@ NAME                               READY   STATUS    RESTARTS   AGE
 pod/nginx-basic-747cff5f4d-g4cwn   1/1     Running   0          17s
 pod/nginx-basic-747cff5f4d-tbrfr   1/1     Running   0          17s
 
-$ k get deploy,svc,po -lapp=nginx-nad
+$ kubectl get deploy,svc,po -lapp=nginx-nad
 NAME                        READY   UP-TO-DATE   AVAILABLE   AGE
 deployment.apps/nginx-nad   2/2     2            2           2m26s
 
@@ -74,14 +74,14 @@ The `nad-service-controller` creates an `EndpointSlice` resource for the
 the `macvlan` network.
 
 ```sh
-$ k get endpointslices -lkubernetes.io/service-name=nginx-nad
+$ kubectl get endpointslices -lkubernetes.io/service-name=nginx-nad
 NAME              ADDRESSTYPE   PORTS    ENDPOINTS                 AGE
 nginx-nad-slice   IPv4          80,443   192.168.2.4,192.168.2.5   5m25s
 
-$ k get endpointslices -lkubernetes.io/service-name=nginx-nad -ojsonpath='{.items[*].endpoints[*].addresses}'
+$ kubectl get endpointslices -lkubernetes.io/service-name=nginx-nad -ojsonpath='{.items[*].endpoints[*].addresses}'
 ["192.168.2.4"] ["192.168.2.5"]
 
-$ k get po -lapp=nginx-nad -ojson | jq -cr '.items[].metadata.annotations["k8s.v1.cni.cncf.io/network-status"] | fromjson | .[1].ips'
+$ kubectl get po -lapp=nginx-nad -ojson | jq -cr '.items[].metadata.annotations["k8s.v1.cni.cncf.io/network-status"] | fromjson | .[1].ips'
 ["192.168.2.4"]
 ["192.168.2.5"]
 ```
@@ -91,19 +91,19 @@ The `netutils-*` pods can be used to send client-side traffic to the Nginx servi
 For example, the `netutils-nad-*` pods can reach both the `nginx-basic` primary network and the `nginx-nad` secondary network services:
 
 ```sh
-$ k exec netutils-nad-6d66668db6-kxhsj -- curl -s -o /dev/null -w "%{http_code}" nginx-nad
+$ kubectl exec netutils-nad-6d66668db6-kxhsj -- curl -s -o /dev/null -w "%{http_code}" nginx-nad
 200
 
-$ k exec netutils-nad-6d66668db6-kxhsj -- curl -s -o /dev/null -w "%{http_code}" nginx-basic
+$ kubectl exec netutils-nad-6d66668db6-kxhsj -- curl -s -o /dev/null -w "%{http_code}" nginx-basic
 200
 ```
 
 But the `netutils-base-*` pods can only reach the `nginx-basic` primary network service. It can't reach the `nginx-nad` secondary network service because the pods aren't part of that network:
 
 ```sh
-$ k exec netutils-base-d8dcd5b98-rv9bv -- curl -s -o /dev/null -w "%{http_code}" nginx-basic
-200%                                                                                                                                                                                          
-$ k exec netutils-base-d8dcd5b98-rv9bv -- curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 nginx-nad
+$ kubectl exec netutils-base-d8dcd5b98-rv9bv -- curl -s -o /dev/null -w "%{http_code}" nginx-basic
+200%
+$ kubectl exec netutils-base-d8dcd5b98-rv9bv -- curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 nginx-nad
 000command terminated with exit code 28
 ```
 
@@ -163,6 +163,12 @@ make apply
 # use ko to delete the Deployment resource from the cluster in your current 
 # kubeconfig context
 make delete
+```
+
+To recompile the GitHub agentic workflows:
+
+```sh
+make compile-aw
 ```
 
 ## Release
