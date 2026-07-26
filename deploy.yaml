@@ -1,3 +1,8 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nad-service-controller
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,6 +22,7 @@ spec:
         app.kubernetes.io/name: nad-service-controller
         app.kubernetes.io/component: controller
     spec:
+      serviceAccountName: nad-service-controller
       containers:
         - name: controller
           image: ko://github.com/ihcsim/nad-service-controller
@@ -27,3 +33,31 @@ spec:
             limits:
               cpu: "1"
               memory: 512Mi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nad-service-controller
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "services"]
+    verbs: ["get", "watch", "list"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["*"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: nad-service-controller
+subjects:
+  - kind: ServiceAccount
+    name: nad-service-controller
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: nad-service-controller
+  apiGroup: rbac.authorization.k8s.io
