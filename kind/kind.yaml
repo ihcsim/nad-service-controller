@@ -7,7 +7,7 @@ nodes:
         containerPath: /opt/cni/bin
   - role: worker
     extraMounts:
-      - hostPath: /home/isim/workspace/nad-service-controller/cni-plugins/
+      - hostPath: cni-plugins/
         containerPath: /opt/cni/bin
   - role: worker
     extraMounts:
