@@ -24,16 +24,14 @@ Can't proceed if tools are missing.
 Hint: All the `make` commands are defined in the `Makefile` and can be run from
 the root of the repository.
 
-* Confirm that KinD has created a kubeconfig file for the test cluster:
+* Create the KinD cluster:
 
 ```sh
-export KIND_CLUSTER_NAME=<cluster-name>
-
-kind get kubeconfig --name "${KIND_CLUSTER_NAME}" 
+make kind
 ```
 
-* Connect to the K8s cluster using the endpoint and credentials found in the
-  kubeconfig file:
+* Once the cluster is ready, confirm the kubeconfig is configured correctly and
+  the cluster is reachable:
 
 ```sh
 kubectl cluster-info

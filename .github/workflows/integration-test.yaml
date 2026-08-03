@@ -43,7 +43,7 @@ jobs:
       - name: install kind
         uses: helm/kind-action@v1
         with:
-          cluster_name: intg-dev
+          install_only: true
       - name: install ko
         uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445
 
@@ -70,18 +70,13 @@ jobs:
             cluster and report the outcome. You are on the `HEAD` commit of the
             branch that triggered this run.
 
-            The authoritative test plan is `integration/testcases.md`. It has
-            all the information on test setup and commands. The commands you
-            need are defined in the `Makefile`.
-
-            A KinD cluster named intg-dev is available for your usage. The kubeconfig
-            file is located at $HOME/.kubeconfig. Do not attempt to create another 
-            K8s cluster. If you can't access the intg-dev cluster using the provided
-            kubeconfig file, abort and fail the workflow.
-
             `kubectl`, `make`, and `ko` are already installed — do not try to
             install them. If any of these tools are unavailable, abort and fail
             the workflow.
+
+            The authoritative test plan is `integration/testcases.md`. It has
+            all the information on test setup and commands. The commands you
+            need are defined in the `Makefile`.
 
             ## Reporting
 

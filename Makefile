@@ -42,7 +42,7 @@ whereabouts:
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_ippools.yaml
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_nodeslicepools.yaml
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
-	$(HELM) template whereabouts oci://ghcr.io/k8snetworkplumbingwg/whereabouts-chart --version $(WHEREABOUTS_VERSION) --set "nodeSelector.kubernetes\.io/os=linux" --set "nodeSelector.node-role\.kubernetes\.io/control-plane=" | $(KUBECTL) apply -f -
+	$(HELM) template whereabouts oci://ghcr.io/k8snetworkplumbingwg/whereabouts-chart --version $(WHEREABOUTS_VERSION) | $(KUBECTL) apply -f -
 	$(KUBECTL) -n kube-system wait --timeout 180s --for condition=Ready po -lapp=whereabouts-chart
 
 cluster: kind multus whereabouts nad
