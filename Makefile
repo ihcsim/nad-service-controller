@@ -30,9 +30,6 @@ mod:
 .PHONY: kind
 kind:
 	$(KIND) create cluster --name $(KIND_CLUSTER_NAME) --config kind/kind.yaml
-	$(MAKE) multus
-	$(MAKE) whereabouts
-	$(MAKE) nad
 
 multus:
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml

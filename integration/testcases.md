@@ -3,10 +3,11 @@
 ## Goals
 
 Test the core functionalites of the `nad-service-controller` controller using
-KinD cluster as the test bed.
+a KinD cluster as the test bed.
 
 * For `Service` resources with the correct annotation and configuration, the
-  controller correctly synchronizes the corresponding `EndpointSlice`
+  controller correctly synchronizes the corresponding `EndpointSlice` to point
+  to the pods' secondary IP addresses from the `macvlan` secondary network
 * For `Service` resources without the correct annotation or configuration, the
   controller does not create any `EndpointSlice`
 
@@ -23,22 +24,42 @@ Can't proceed if tools are missing.
 Hint: All the `make` commands are defined in the `Makefile` and can be run from
 the root of the repository.
 
-* Confirm that the `KUBECONFIG` environment variable is set to a kubeconfig file
+* Confirm that KinD has created a kubeconfig file for the test cluster:
+
+```sh
+export KIND_CLUSTER_NAME=<cluster-name>
+
+kind get kubeconfig --name "${KIND_CLUSTER_NAME}" 
+```
+
 * Connect to the K8s cluster using the endpoint and credentials found in the
-  kubeconfig file
-* Deploy `multus`, `whereabouts` and `nad` to the cluster:
-`make multus whereabouts nad`
-* Wait till all the components are up and running
+  kubeconfig file:
+
+```sh
+kubectl cluster-info
+```
+
+* Deploy `multus`, `whereabouts` and `nad` to the cluster and wait till all the
+  components are up and running
+
+```sh
+make multus whereabouts nad
+```
+
 * Build the controller image using `HEAD` commit from `main` branch and deploy it
-  to the K8s cluster: `make apply`
-* Wait for the controller to be ready
-* Deploy test resources in the `testdata` directory: `make testdata`
-  * See [Test Resources](#test-resources) section for details.
+  to the K8s cluster. Wait for the controller to be ready:
+
+```sh
+make apply-kind
+```
+
+Proceed to the [Test Resources](#test-resources) section to create the test
+resources in the cluster.
 
 ## Test Resources
 
-The following test resources are needed in the `default` namespace for the integration
-tests to run:
+Use the `make testdata` command to create the following test resources
+in the `default` namespace:
 
 Resource Type | Resource Name         | Namespace | Test file
 ------------- | --------------------- | --------- | -------------------------
@@ -50,6 +71,8 @@ Deployment    | netutils-base         | default   | testdata/netutils.yaml
 Deployment    | netutils-nad          | default   | testdata/netutils.yaml
 Service       | unsupported-clusterip | default   | testdata/unsupported.yaml
 Service       | unsupported-selector  | default   | testdata/unsupported.yaml
+
+Once the test resources are ready, proceed to run the test cases.
 
 ## Test Case 1 - Check RBAC
 

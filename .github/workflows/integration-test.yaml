@@ -43,7 +43,7 @@ jobs:
       - name: install kind
         uses: helm/kind-action@v1
         with:
-          install_only: true
+          cluster_name: intg-dev
       - name: install ko
         uses: ko-build/setup-ko@61b4d1d396f5b2e7d6bb6fefdce3dc38d1a13445
 
@@ -70,33 +70,18 @@ jobs:
             cluster and report the outcome. You are on the `HEAD` commit of the
             branch that triggered this run.
 
-            The authoritative test plan is `integration/testcases.md`. The
-            target commands you need are defined in the `Makefile`.
+            The authoritative test plan is `integration/testcases.md`. It has
+            all the information on test setup and commands. The commands you
+            need are defined in the `Makefile`.
 
-            The `KUBECONFIG` environment variable is set to a kubeconfig file
-            that points to the K8s cluster you should use for the tests.
+            A KinD cluster named intg-dev is available for your usage. The kubeconfig
+            file is located at $HOME/.kubeconfig. Do not attempt to create another 
+            K8s cluster. If you can't access the intg-dev cluster using the provided
+            kubeconfig file, abort and fail the workflow.
 
             `kubectl`, `make`, and `ko` are already installed — do not try to
-            install them. `make apply-kind` builds the controller image from
-            `HEAD` and loads it directly into the KinD cluster
-            (`KO_DOCKER_REPO=kind.local`), so no registry is involved.
-
-            Steps:
-
-            1. **Preflight.** Verify `kubectl`, `make`, and `ko` are available.
-               If any is missing, stop and report failure — do not install it.
-            2. **Setup.** Follow the *Setup* section of
-               `integration/testcases.md`: the K8s cluster would have been
-               created by GitHub Actions, so just run `make apply-kind`, then
-               `make testdata`. Wait for each stage to become Ready
-               (`kubectl wait`) before continuing.
-            3. **Run.** Execute Test Cases 1 through 6 exactly as specified,
-               gathering the actual cluster state with `kubectl` (and
-               `kubectl exec` for the Test Case 2 connectivity checks) and
-               comparing it to the expected result.
-            4. **Teardown.** Always run `make purge` at the end, even if a test
-               fails. Write both report files described below *before* you
-               purge, since the cluster is gone afterwards.
+            install them. If any of these tools are unavailable, abort and fail
+            the workflow.
 
             ## Reporting
 
