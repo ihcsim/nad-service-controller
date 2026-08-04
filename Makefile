@@ -33,7 +33,7 @@ kind:
 
 multus:
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/master/deployments/multus-daemonset-thick.yml
-	$(KUBECTL) -n kube-system wait --for condition=Ready po -lapp=multus
+	$(KUBECTL) -n kube-system wait --timeout 300s --for condition=Ready po -lapp=multus
 
 nad:
 	$(KUBECTL) apply -f kind/nad-macvlan.yaml
@@ -43,7 +43,7 @@ whereabouts:
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_nodeslicepools.yaml
 	$(KUBECTL) apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/refs/heads/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
 	$(HELM) template whereabouts oci://ghcr.io/k8snetworkplumbingwg/whereabouts-chart --version $(WHEREABOUTS_VERSION) | $(KUBECTL) apply -f -
-	$(KUBECTL) -n kube-system wait --timeout 180s --for condition=Ready po -lapp=whereabouts-chart
+	$(KUBECTL) -n kube-system wait --timeout 300s --for condition=Ready po -lapp=whereabouts-chart
 
 cluster: kind multus whereabouts nad
 
