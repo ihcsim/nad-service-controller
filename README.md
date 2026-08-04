@@ -8,6 +8,19 @@ with `isim.dev/network: <network-name>`. It creates the `EndpointSlices`
 resource for the `Service` to enable traffic to be routed to the pods' secondary
 network IP addresses, in the `<network-name>` network.
 
+The service must be:
+
+* headless i.e. `spec.clusterIP: None` so that traffic is routed directly to the
+  pods' secondary network IP addresses. There is no guarantee that the clusterIP
+  assigned by K8s can reach the secondary network.
+* without selector i.e. `spec.selector: {}` so that the controller can create
+  endpoints that point to the pods' secondary network IP addresses. Endpoints
+  managed by K8s only work in the primary network.
+
+Optionally, if the service has the `app.kubernetes.io/name` or `app` labels, only
+matching pods are included in the endpoint slices. Otherwise, all pods that are
+part of the secondary network are included.
+
 The states of the pods are reflected in the endpoints' conditions to ensure
 traffic is routed only to ready pods.
 

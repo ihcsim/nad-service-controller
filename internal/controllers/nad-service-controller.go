@@ -51,11 +51,14 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
+	// if not headless, there is no guarantee that the clusterIP can reach the secondary network
 	if svc.Spec.ClusterIP != "None" {
 		log.Info("skipping service", "reason", "only works with headless service. spec.clusterIP should be 'None'")
 		return ctrl.Result{}, nil
 	}
 
+	// selector must be nil, so that we can manage the endpointslice ourselves.
+	// specifically, we want the endpoints to point to the pods' secondary network.
 	if len(svc.Spec.Selector) > 0 {
 		log.Info("skipping service", "reason", "only works with service without selectors because the endpointslice must be managed by us. spec.Selector should be nil")
 		return ctrl.Result{}, nil
@@ -76,6 +79,18 @@ func (r *NADServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		matchingFields = client.MatchingFields{indexer.IndexKeyPodNetwork: namespacedNetwork}
 	)
 	matchingFields.ApplyToList(listOpts)
+
+	// check if the service has the label "app.kubernetes.io/name" or "app" and use
+	// it to filter pods by label. an empty matchingLabels will match all pods.
+	matchingLabels := client.MatchingLabels{}
+	appName, exists := svc.GetLabels()["app.kubernetes.io/name"]
+	if exists {
+		matchingLabels["app.kubernetes.io/name"] = appName
+	} else if appName, exists := svc.GetLabels()["app"]; exists {
+		matchingLabels["app"] = appName
+	}
+	matchingLabels.ApplyToList(listOpts)
+
 	if err := r.List(ctx, pods, listOpts); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list Pods: %w", err)
 	}
