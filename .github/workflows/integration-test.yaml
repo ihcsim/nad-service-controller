@@ -1,8 +1,5 @@
 name: Integration Test with KinD
 on:
-  schedule:
-    # Weekly, Monday 07:17 UTC (off the hour to avoid runner contention).
-    - cron: "17 7 * * 1"
   workflow_dispatch:
 
 # assign unique group name to avoid concurrent runs. in the event of multiple
